@@ -79,19 +79,23 @@ extension StateFlow {
     
     public final class Subscription: SharedBufferedSubscription {
         public let id = UUID()
-        private let state: State
+        let emitter: State
         
         init(state: State) {
-            self.state = state
+            self.emitter = state
         }
         
         public func next() async -> Element? {
-            await state.register(self)
-            return try? await state.awaitNextValue(id: id)
+            await emitter.register(self)
+            return try? await emitter.awaitNextValue(id: id)
         }
         
-        func cancel() async {
-            await state.cancel(id: id)
+        public func register() async {
+            await emitter.register(self)
+        }
+        
+        public func cancel() async {
+            await emitter.cancel(id: id)
         }
     }
 }

@@ -5,7 +5,7 @@
 //  Created by Lukas Simonson on 6/10/25.
 //
 
-struct WeakBuffer<Key: AnyObject, Element> {
+public struct WeakBuffer<Key: AnyObject, Element> {
     private weak var key: Key?
     private var buffer: [Element]
     

@@ -8,9 +8,13 @@
 import Foundation
 
 protocol SharedBufferedSubscription: Identifiable, AnyObject, Sendable, AsyncIteratorProtocol {
+    associatedtype Emitter: SharedBufferedEmitter
+    
     var id: UUID { get }
+    var emitter: Emitter { get }
     
     func cancel() async
+    func register() async
 }
 
 protocol SharedBufferedEmitter: Actor {
