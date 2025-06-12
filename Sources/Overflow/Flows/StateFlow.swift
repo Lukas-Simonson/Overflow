@@ -22,12 +22,6 @@ public final class StateFlow<Element: Sendable>: Flow {
     /// The current value of the flow. Always returns the latest value.
     public var value: Element { get async { await state.value } }
     
-    /// Initializes a new state flow with the provided initial value.
-    /// - Parameter element: The initial value of the flow.
-    public init(initial element: Element) {
-        self.state = State(initial: element)
-    }
-    
     /// Internal initializer used to convert MutableStateFlow to StateFlow.
     fileprivate init(state: State) {
         self.state = state
@@ -164,4 +158,9 @@ extension StateFlow {
             await emitter.cancel(id: id)
         }
     }
+}
+
+func test() {
+    let flow = MutableStateFlow(initial: 0)
+    flow.emit(1)
 }
