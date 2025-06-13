@@ -13,7 +13,7 @@ struct StateFlowTests {
     
     @Test("Initial value is correct")
     func testInitialValue() async {
-        let flow = StateFlow(initial: 42)
+        let flow = MutableStateFlow(initial: 42).asStateFlow()
         let value = await flow.value
         #expect(value == 42)
     }

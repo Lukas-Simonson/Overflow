@@ -159,8 +159,3 @@ extension StateFlow {
         }
     }
 }
-
-func test() {
-    let flow = MutableStateFlow(initial: 0)
-    flow.emit(1)
-}

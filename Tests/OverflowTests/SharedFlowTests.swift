@@ -13,7 +13,7 @@ struct SharedFlowTests {
     
     @Test("SharedFlow emits multiple values")
     func testSharedFlowEmitsMultipleValues() async {
-        let flow = MutableSharedFlow<String>()
+        let flow = MutableSignalFlow<String>()
         let valuesToEmit = ["World", "Goodbye", "Friends", "Hola", "Compadre", "Adios", "Amigo"]
         
         Task {
@@ -36,7 +36,7 @@ struct SharedFlowTests {
     
     @Test("SharedFlow Suspends on Buffer Overflow")
     func testSharedFlowSuspendsOnBufferOverflow() async {
-        let flow = MutableSharedFlow<Int>()
+        let flow = MutableSignalFlow<Int>()
         let subscription = flow.makeAsyncIterator()
         await subscription.register()
         
@@ -61,7 +61,7 @@ struct SharedFlowTests {
     
     @Test("Multiple subscribers receive all values independently")
     func testMultipleSubscribers() async {
-        let flow = MutableSharedFlow<Int>()
+        let flow = MutableSignalFlow<Int>()
         let sub1 = flow.makeAsyncIterator()
         let sub2 = flow.makeAsyncIterator()
         
@@ -85,7 +85,7 @@ struct SharedFlowTests {
     
     @Test("Concurrent emissions preserve order and delivery")
     func testConcurrentEmissions() async {
-        let flow = MutableSharedFlow<Int>()
+        let flow = MutableSignalFlow<Int>()
         let sub = flow.makeAsyncIterator()
         await sub.register()
         let values = Array(1...20)
@@ -103,13 +103,13 @@ struct SharedFlowTests {
     
     @Test("Stress test: rapid emits and cancels")
     func testNoDeadlocksOrLeaks() async {
-        let flow = MutableSharedFlow<Int>()
+        let flow = MutableSignalFlow<Int>()
         for _ in 0..<100 {
             let sub = flow.makeAsyncIterator()
             await sub.register()
             Task { await flow.emit(Int.random(in: 1...1000)) }
             _ = await sub.next()
-            await sub.cancel()
+            await sub.close()
         }
     }
 }

@@ -52,13 +52,13 @@ struct ColdFlowTests {
     
     @Test("Cold Flow Handles Buffer Overflow")
     func testBufferOverflow() async {
-        let values = (0...10).map { "\($0)" }
+        let values = Array(0...10)
         let flow = ColdFlow { emit in
             for value in values {
                 await emit(value)
             }
         }
-        var collected = [String]()
+        var collected = [Int]()
         for await value in flow {
             collected.append(value)
         }
