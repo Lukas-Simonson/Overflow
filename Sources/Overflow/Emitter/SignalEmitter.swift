@@ -8,11 +8,16 @@
 import Foundation
 
 public final class MutableSignalFlow<Element: Sendable>: MutableFlow {
+    public typealias BP = BufferPolicy<_Message<Element>>
     
     private let publisher: Publisher
+    private let bufferPolicy: BufferPolicy<_Message<Element>>
     
-    public init() {
-        publisher = Publisher()
+    public init(
+        bufferPolicy: BP = .stalling(maxSize: 5)
+    ) {
+        self.publisher = Publisher()
+        self.bufferPolicy = bufferPolicy
     }
     
     public func emit(_ value: Element) async {
@@ -20,7 +25,7 @@ public final class MutableSignalFlow<Element: Sendable>: MutableFlow {
     }
     
     public func makeAsyncIterator() -> Subscriber {
-        Subscriber(publisher: publisher)
+        Subscriber(publisher: publisher, buffer: bufferPolicy.create())
     }
 }
 
@@ -29,11 +34,12 @@ extension MutableSignalFlow {
         public let id = UUID()
         
         weak var publisher: Publisher?
-        var buffer = [Message<Element>]()
+        var buffer: Buffer<_Message<Element>>
         var continuation: CheckedContinuation<Element, Never>?
         
-        init(publisher: Publisher) {
+        init(publisher: Publisher, buffer: Buffer<_Message<Element>>) {
             self.publisher = publisher
+            self.buffer = buffer
         }
         
         public func register() async { await _register() }

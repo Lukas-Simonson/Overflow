@@ -7,7 +7,7 @@
 
 import Foundation
 
-internal enum Message<Element: Sendable> {
+public enum _Message<Element: Sendable>: Sendable {
     case element(Element)
     case close
     
@@ -23,7 +23,7 @@ internal protocol BufferedSubscriber: Actor, Subscriber {
     associatedtype Pub: Publisher where Pub.Sub == Self
     
     var publisher: Pub? { get set }
-    var buffer: [Message<Element>] { get set }
+    var buffer: Buffer<_Message<Element>> { get }
     var continuation: CheckedContinuation<Element, Never>? { get set }
 }
 
@@ -38,14 +38,14 @@ extension BufferedSubscriber {
             continuation.resume(returning: value)
             self.continuation = nil
         } else {
-            buffer.append(.element(value))
+            await buffer.add(.element(value))
         }
     }
     
     public func _next() async -> Element? {
         await _register()
         if !buffer.isEmpty {
-            return buffer.removeFirst().value
+            return await buffer.next()?.value
         }
         
         return await withCheckedContinuation { cont in
@@ -54,6 +54,6 @@ extension BufferedSubscriber {
     }
     
     public func _close() async {
-        buffer.append(.close)
+        await buffer.add(.close)
     }
 }

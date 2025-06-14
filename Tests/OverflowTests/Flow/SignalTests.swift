@@ -14,13 +14,13 @@ import XCTest
 @Suite("High Pressure Flow Testing")
 struct PressureTest {
     
-    let elementCount = 1000
+    let elementCount = 100_000
     let tolerance = 0
     let sharedSubscribers = 10
     
     @Test("Mutable Signal High Pressure", .timeLimit(.minutes(1)))
     func mutableSignalHighPressure() async throws {
-        let flow = MutableSignalFlow<Int>()
+        let flow = MutableSignalFlow<Int>(bufferPolicy: .stalling(maxSize: 5))
         
         await withTaskGroup(of: Void.self) { group in
             
@@ -44,49 +44,56 @@ struct PressureTest {
         }
     }
     
-//    @Test("Combine High Pressure", .timeLimit(.minutes(1)))
-//    func combineHighPressure() async throws {
-//        let subject = PassthroughSubject<Int, Never>()
-//        // let flow = MutableStateFlow<Int>(initial: 0)
-//        
-//        await withTaskGroup(of: Void.self) { group in
-//            group.addTask {
-//                for i in 0..<elementCount {
-//                    print("Sending \(i)")
-//                    subject.send(i)
-//                }
-//            }
-//            
-//            group.addTask {
-//                var received = 0
-//                
-//                var cont: CheckedContinuation<Void, Never>?
-//                
-//                let cancellable = subject
-//                    .eraseToAnyPublisher()
-//                    .sink { i in
-//                        print("Received \(i)")
-//                        received += 1
-//                        if received >= elementCount - tolerance {
-//                            cont?.resume()
-//                        }
-//                    }
-//                
-//                await withCheckedContinuation { c in
-//                    cont = c
-//                }
-//                
-//                cancellable.cancel()
-//            }
-//        }
-//    }
+    @Test("Combine High Pressure", .timeLimit(.minutes(1)))
+    func combineHighPressure() async throws {
+        let subject = PassthroughSubject<Int, Never>()
+        // let flow = MutableStateFlow<Int>(initial: 0)
+        
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                try? await Task.sleep(for: .seconds(1))
+                for i in 0..<elementCount {
+                    print("Sending \(i)")
+                    subject.send(i)
+                }
+            }
+            
+            group.addTask {
+                var received = 0
+                
+                var cont: CheckedContinuation<Void, Never>?
+                
+                let cancellable = subject
+                    .eraseToAnyPublisher()
+                    .sink { i in
+                        print("Received \(i)")
+                        received += 1
+                        if received >= elementCount - tolerance {
+                            cont?.resume()
+                        }
+                    }
+                
+                await withCheckedContinuation { c in
+                    cont = c
+                }
+                
+                cancellable.cancel()
+            }
+        }
+    }
 }
 
 final class SignalPerformanceTests: XCTestCase {
-    let elementCount = 50
+    let elementCount = 10000
+    
+    let options = {
+        let op = XCTMeasureOptions()
+        op.iterationCount = 100
+        return op
+    }()
     
     let metrics: [XCTMetric] = [
-        XCTClockMetric(), XCTMemoryMetric()
+        XCTCPUMetric(), XCTClockMetric(), XCTMemoryMetric()
     ]
     
     func testMutableSignalEmitterPerformance() async {
@@ -94,13 +101,13 @@ final class SignalPerformanceTests: XCTestCase {
         let signal = flow.makeAsyncIterator()
         let count = elementCount
         
-        measure(metrics: metrics) {
+        measure(metrics: metrics, options: options) {
             let exp = expectation(description: "Finished")
             
             Task {
                 await withTaskGroup(of: Void.self) { group in
                     group.addTask {
-                        try? await Task.sleep(for: .milliseconds(1))
+                        try? await Task.sleep(for: .milliseconds(500))
                         for i in 0..<count {
                             await flow.emit(i)
                         }
@@ -118,40 +125,52 @@ final class SignalPerformanceTests: XCTestCase {
                 exp.fulfill()
             }
             
-            wait(for: [exp], timeout: 5)
+            wait(for: [exp], timeout: 15)
         }
     }
     
     func testMutableSharedFlowPerformance() async {
-        let flow = MutableSharedFlow<Int>()
-        let sub = flow.makeAsyncIterator()
+        let subject = PassthroughSubject<Int, Never>()
         let count = elementCount
         
-        measure(metrics: metrics) {
+        measure(metrics: metrics, options: options) {
             let exp = expectation(description: "Finished")
             
             Task {
                 await withTaskGroup(of: Void.self) { group in
                     group.addTask {
-                        try? await Task.sleep(for: .milliseconds(1))
+                        try? await Task.sleep(for: .milliseconds(500))
                         for i in 0..<count {
-                            await flow.emit(i)
+                            subject.send(i)
                         }
                     }
                     
                     group.addTask {
                         var received = 0
-                        while let _ = await sub.next() {
-                            received += 1
-                            if received == count { break }
+                        
+                        var cont: CheckedContinuation<Void, Never>?
+                        
+                        let cancellable = subject
+                            .eraseToAnyPublisher()
+                            .sink { i in
+                                received += 1
+                                if received >= count {
+                                    cont?.resume()
+                                }
+                            }
+                        
+                        await withCheckedContinuation { c in
+                            cont = c
                         }
+                        
+                        cancellable.cancel()
                     }
                 }
                 
                 exp.fulfill()
             }
             
-            wait(for: [exp], timeout: 5)
+            wait(for: [exp], timeout: 15)
         }
     }
 }
