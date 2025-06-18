@@ -5,6 +5,8 @@
 //  Created by Lukas Simonson on 6/10/25.
 //
 
+import Foundation
+
 /// An async sendable closure used to emit values from a flow builder.
 /// Call this closure with a value to emit it to all current subscribers.
 ///
@@ -21,7 +23,7 @@ public typealias EmitAction<E: Sendable> = @Sendable (E) async -> Void
 public func flow<E: Sendable>(
     _ builder: @Sendable @escaping (EmitAction<E>) async -> Void
 ) -> some Flow {
-    ColdFlow(builder: builder)
+    return ColdFlow(builder: builder)
 }
 
 /// A cold asynchronous flow that emits values to subscribers when collected.
@@ -35,54 +37,81 @@ public final class ColdFlow<Element: Sendable>: Flow {
     /// It receives an `EmitAction` to emit values asynchronously.
     private let builder: @Sendable (EmitAction<Element>) async -> Void
     
+    private let bufferPolicy: MessageBufferPolicy<Element>
+    
     /// Initializes a new cold flow with the provided builder.
     /// - Parameter builder: An async closure that emits values using the provided `EmitAction`.
-    public init(builder: @Sendable @escaping (EmitAction<Element>) async -> Void) {
+    public init(
+        bufferPolicy: MessageBufferPolicy<Element> = .stalling(maxSize: 5),
+        builder: @Sendable @escaping (EmitAction<Element>) async -> Void
+    ) {
+        self.bufferPolicy = bufferPolicy
         self.builder = builder
     }
     
     /// Creates an async iterator (subscription) for this flow.
     /// Each call starts a new execution of the builder.
     /// - Returns: A `Subscription` for iterating over emitted values.
-    public func makeAsyncIterator() -> Subscription {
-        let emitter = Emitter()
-        
+    public func makeAsyncIterator() -> Subscriber {
+        let sub = Subscriber(buffer: bufferPolicy.create())
+        let publisher = Pub(sub: sub)
         Task {
-            await builder(emitter.emit(_:))
-            await emitter.close()
+            await builder { value in
+                await publisher.emit(value)
+            }
+            await publisher.close()
         }
-        
-        return Subscription(emitter: emitter)
+        return sub
     }
 }
 
 extension ColdFlow {
     
-    /// The actor responsible for buffering and emitting values to subscribers of a ColdFlow.
-    public actor Emitter: BufferedEmitter {
+    public actor Subscriber: BufferedSubscriber {
+        public let id = UUID()
         
-        /// The continuation used for resuming an awaiting subscriber.
-        public var continuation: CheckedContinuation<Element?, any Error>? = nil
-
-        /// The maximum number of buffered elements.
-        public var maxBufferSize: Int = 5
+        weak var publisher: Pub?
+        var buffer: MessageBuffer<Element>
+        var continuation: CheckedContinuation<Element?, Never>?
         
-        /// The buffer holding emitted elements.
-        public var buffer: [Element] = []
-    }
-    
-    /// The subscription type for iterating over values emitted by the flow.
-    public final class Subscription: BufferedSubscription {
-        
-        let emitter: Emitter
-        
-        fileprivate init(emitter: Emitter) {
-            self.emitter = emitter
+        init(buffer: MessageBuffer<Element>) {
+            self.publisher = nil
+            self.buffer = buffer
         }
         
-        /// Returns the next value from the flow, or nil if the flow is closed.
+        public func register() async {
+            await _register()
+        }
+        public func send(_ value: Element) async {
+            await _send(value)
+        }
+        public func close() async {
+            await _close()
+        }
         public func next() async -> Element? {
-            try? await emitter.awaitNextValue()
+            return await _next()
+        }
+    }
+    actor Pub: Publisher {
+        typealias Sub = ColdFlow<Element>.Subscriber
+        
+        private weak var sub: Sub!
+        
+        init(sub: Sub) {
+            self.sub = sub
+        }
+        
+        func emit(_ newValue: Element) async {
+            await sub!.send(newValue)
+        }
+        
+        func close() async {
+            await sub!.close()
+        }
+        
+        func register(_ subscriber: Sub) async {
+            guard sub == nil else { return }
+            sub = subscriber
         }
     }
 }

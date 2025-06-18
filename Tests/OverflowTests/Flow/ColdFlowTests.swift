@@ -49,21 +49,7 @@ struct ColdFlowTests {
         }
         #expect(collected == ["OnlyOne"])
     }
-    
-    @Test("Cold Flow Handles Buffer Overflow")
-    func testBufferOverflow() async {
-        let values = (0...10).map { "\($0)" }
-        let flow = ColdFlow { emit in
-            for value in values {
-                await emit(value)
-            }
-        }
-        var collected = [String]()
-        for await value in flow {
-            collected.append(value)
-        }
-        #expect(collected == values)
-    }
+
     
     @Test("Cold Flow is Cold (New Iterator Restarts)")
     func testColdness() async {

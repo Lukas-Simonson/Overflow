@@ -30,8 +30,8 @@ public extension MutableFlow {
     /// Emits a value asynchronously in a detached task.
     ///
     /// - Parameter value: The value to emit.
-    func emit(_ value: Element) {
-        Task { emit(value) }
+    func emitDeferred(_ value: Element) {
+        Task { await emit(value) }
     }
 }
 
