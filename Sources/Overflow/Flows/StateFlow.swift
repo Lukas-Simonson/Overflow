@@ -34,7 +34,7 @@ public final class MutableStateFlow<Element: Sendable>: MutableFlow {
     
     public var value: Element { get async { await publisher.value } }
     
-    init(initial value: Element, bufferPolicy: MessageBufferPolicy<Element> = .stalling(maxSize: 5)) {
+    public init(initial value: Element, bufferPolicy: MessageBufferPolicy<Element> = .stalling(maxSize: 5)) {
         self.publisher = Publisher(initialValue: value)
         self.bufferPolicy = bufferPolicy
     }
