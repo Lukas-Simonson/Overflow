@@ -7,128 +7,85 @@
 
 import Foundation
 
-/// A hot asynchronous flow that multicasts emitted values to all active subscribers.
-///
-/// Each subscriber receives values as they are emitted, sharing the same underlying buffer.
-/// The flow is "hot", meaning values are produced regardless of the presence of subscribers.
-///
-/// - Parameter Element: The type of values emitted by the flow.
 public final class SharedFlow<Element: Sendable>: Flow {
+    public typealias Subscriber = MutableSharedFlow<Element>.Subscriber
+    typealias Publisher = MutableSharedFlow<Element>.Publisher
     
-    /// The internal output emitter responsible for managing subscriptions and buffering.
-    private let output: Output
+    private let publisher: Publisher
+    private let bufferPolicy: MessageBufferPolicy<Element>
     
-    /// Initializes a new shared flow.
-    public init() {
-        self.output = Output()
+    fileprivate init(publisher: Publisher, bufferPolicy: MessageBufferPolicy<Element>) {
+        self.publisher = publisher
+        self.bufferPolicy = bufferPolicy
     }
     
-    /// Internal initializer used to convert MutableSharedFlow to SharedFlow
-    fileprivate init(output: Output) {
-        self.output = output
-    }
-    
-    /// Creates an async iterator (subscription) for this flow.
-    ///
-    /// Each subscription receives values as they are emitted.
-    ///
-    /// - Returns: A `Subscription` for iterating over emitted values.
-    public func makeAsyncIterator() -> Subscription {
-        Subscription(output: output)
+    public func makeAsyncIterator() -> Subscriber {
+        Subscriber(publisher: publisher, buffer: bufferPolicy.create())
     }
 }
 
-/// A mutable hot asynchronous flow that allows emitting values to all active subscribers.
-///
-/// Values are multicast to all subscribers as they are emitted, sharing the same underlying buffer.
-/// Use `emit(_:)` to send values, and `asSharedFlow()` to expose a read-only flow.
-///
-/// - Parameter Element: The type of values emitted by the flow.
 public final class MutableSharedFlow<Element: Sendable>: MutableFlow {
     
-    typealias Output = SharedFlow<Element>.Output
-    public typealias Subscription = SharedFlow<Element>.Subscription
+    private let publisher: Publisher
+    private let bufferPolicy: MessageBufferPolicy<Element>
     
-    /// The internal output emitter responsible for managing subscriptions and buffering.
-    private let output: Output
-    
-    /// Initializes a new mutable shared flow.
-    public init() {
-        output = Output()
+    public init(
+        bufferPolicy: MessageBufferPolicy<Element> = .stalling(maxSize: 5)
+    ) {
+        self.publisher = Publisher()
+        self.bufferPolicy = bufferPolicy
     }
     
-    /// Emits a value to all active subscribers.
-    /// - Parameter value: The value to emit.
     public func emit(_ value: Element) async {
-        await self.output.emit(value)
+        await publisher.emit(value)
     }
     
-    /// Returns a read-only `SharedFlow` view of this mutable flow.
-    /// - Returns: A `SharedFlow` instance sharing the same buffer and subscriptions.
     public func asSharedFlow() -> SharedFlow<Element> {
-        SharedFlow(output: output)
+        let sharedFlow = SharedFlow(publisher: publisher, bufferPolicy: bufferPolicy)
+        return sharedFlow
     }
     
-    /// Creates an async iterator (subscription) for this flow.
-    ///
-    /// Each subscription receives values as they are emitted.
-    ///
-    /// - Returns: A `Subscription` for iterating over emitted values.
-    public func makeAsyncIterator() -> Subscription {
-        Subscription(output: output)
+    public func makeAsyncIterator() -> Subscriber {
+        Subscriber(publisher: publisher, buffer: bufferPolicy.create())
     }
 }
 
-extension SharedFlow {
-    
-    /// The actor responsible for buffering and emitting values to subscribers.
-    actor Output: SharedBufferedEmitter {
+extension MutableSharedFlow {
+    public actor Subscriber: BufferedSubscriber {
+        public let id = UUID()
         
-        /// The maximum number of buffered elements per subscriber.
-        var maxBufferSize: Int = 5
+        weak var publisher: Publisher?
+        var buffer: MessageBuffer<Element>
+        var continuation: CheckedContinuation<Element?, Never>?
         
-        /// Continuations for handling buffer overflows.
-        var overflowContinuations = [UUID : [CheckedContinuation<Void, Never>]]()
+        init(publisher: Publisher, buffer: MessageBuffer<Element>) {
+            self.publisher = publisher
+            self.buffer = buffer
+        }
         
-        /// Continuations for awaiting the next value per subscription.
-        var waitingSubscriptions = [UUID : CheckedContinuation<Element, any Error>]()
-        
-        /// Buffers holding emitted elements for each subscription.
-        var buffers = [UUID : WeakBuffer<Subscription, Element>]()
+        public func register() async {
+            await _register()
+        }
+        public func send(_ value: Element) async {
+            await _send(value)
+        }
+        public func close() async {
+            await _close()
+        }
+        public func next() async -> Element? {
+            if let result = await _next() {
+                return result
+            }
+            return nil
+        }
     }
     
-    /// The subscription type for iterating over values emitted by a SharedFlow.
-    public final class Subscription: SharedBufferedSubscription {
+    actor Publisher: SharedPublisher {
+        typealias Sub = MutableSharedFlow<Element>.Subscriber
         
-        public let id = UUID()
-        let emitter: Output
+        var subscribers = [UUID : Weak<Sub>]()
         
-        init(output: Output) {
-            self.emitter = output
-        }
-        
-        /// Returns the next value from the flow, or nil if the flow is closed.
-        public func next() async -> Element? {
-            await register()
-            return try? await emitter.awaitNextValue(id: id)
-        }
-        
-        /// Registers the subscription with the emitter.
-        ///
-        /// This allows a buffer to fill with values, prior to collecting them.
-        /// Registration is handled manually by default when you start collecting values.
-        ///
-        /// - WARNING: Registering a Subscription and not collecting from it can lead to the flow freezing. Only use sparingly.
-        public func register() async {
-            await emitter.register(self)
-        }
-        
-        /// Cancels the subscription, removing it from the emitter.
-        ///
-        /// This happens automatically when the reference to the Subscription exists scope.
-        /// You can call cancel manually to clear its buffer immediately.
-        public func cancel() async {
-            await emitter.cancel(id: id)
-        }
+        var isEmitting = false
+        var emissionQueue = [Element]()
     }
 }

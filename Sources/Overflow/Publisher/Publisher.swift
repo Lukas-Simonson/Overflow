@@ -7,12 +7,11 @@
 
 import Foundation
 
-public protocol Publisher: Sendable, AnyObject {
+public protocol Publisher: Sendable, Actor {
     associatedtype Element: Sendable
     associatedtype Sub: Subscriber where Sub.Element == Element
     
     func emit(_ newValue: Element) async
     func register(_ subscriber: Sub) async
-    func cancel(id: UUID) async
 }
 

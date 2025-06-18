@@ -21,7 +21,7 @@ public class SlidingBuffer<Element>: Buffer<Element>, @unchecked Sendable {
     
     public override func add(_ value: Element) async {
         lock.withLock {
-            if count >= maxSize {
+            if values.count >= maxSize {
                 values.removeFirst()
             }
             

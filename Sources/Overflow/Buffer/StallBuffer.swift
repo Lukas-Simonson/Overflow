@@ -30,7 +30,6 @@ public class StallBuffer<Element>: Buffer<Element>, @unchecked Sendable {
                 }
             }
         }
-        
         await super.add(value)
     }
     
@@ -40,7 +39,6 @@ public class StallBuffer<Element>: Buffer<Element>, @unchecked Sendable {
                 stalls.removeFirst().resume()
             }
         }
-        
         return await super.next()
     }
 }

@@ -7,6 +7,8 @@
 
 import Foundation
 
+public typealias MessageBuffer<Element> = Buffer<_Message<Element>>
+
 public extension BufferPolicy {
     static func unbounded() -> BufferPolicy<Element> {
         BufferPolicy { Buffer() }
@@ -15,12 +17,20 @@ public extension BufferPolicy {
 
 open class Buffer<Element>: @unchecked Sendable {
     
-    open var isEmpty: Bool { values.isEmpty }
+    open var isEmpty: Bool {
+        return lock.withLock {
+            values.isEmpty
+        }
+    }
     
-    var count: Int { values.count }
+    var count: Int {
+        return lock.withLock {
+            values.count
+        }
+    }
     var values = [Element]()
     
-    var lock = NSLock()
+    var lock = NSRecursiveLock()
     
     open func add(_ value: Element) async {
         lock.withLock {

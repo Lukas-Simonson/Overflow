@@ -23,37 +23,45 @@ internal protocol BufferedSubscriber: Actor, Subscriber {
     associatedtype Pub: Publisher where Pub.Sub == Self
     
     var publisher: Pub? { get set }
-    var buffer: Buffer<_Message<Element>> { get }
-    var continuation: CheckedContinuation<Element, Never>? { get set }
+    var buffer: MessageBuffer<Element> { get }
+    var continuation: CheckedContinuation<Element?, Never>? { get set }
+    
+    func register() async
 }
 
 extension BufferedSubscriber {
     public func _register() async {
-        guard let publisher else { return }
+        guard let publisher else {
+            return
+        }
+        self.publisher = nil
         await publisher.register(self)
     }
     
     public func _send(_ value: Element) async {
+        await buffer.add(.element(value))
         if let continuation {
-            continuation.resume(returning: value)
             self.continuation = nil
-        } else {
-            await buffer.add(.element(value))
+            continuation.resume(returning: await buffer.next()?.value)
         }
     }
     
     public func _next() async -> Element? {
-        await _register()
+        await register()
         if !buffer.isEmpty {
             return await buffer.next()?.value
         }
-        
         return await withCheckedContinuation { cont in
             self.continuation = cont
         }
     }
     
     public func _close() async {
-        await buffer.add(.close)
+        if let continuation {
+            self.continuation = nil
+            continuation.resume(returning: nil)
+        } else {
+            await buffer.add(.close)
+        }
     }
 }
