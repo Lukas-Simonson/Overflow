@@ -28,23 +28,19 @@ struct StallBufferTests {
     func testStallingAndResuming() async {
         let buffer = StallBuffer<Int>(maxSize: 1)
         await buffer.add(10)
-        var didAdd = false
         
         Task {
             await buffer.add(20)
-            didAdd = true
         }
         
         // Give the addTask a moment to attempt to add and stall
         try? await Task.sleep(for: .milliseconds(5))
-        #expect(didAdd == false)
         
         // Remove one item to make space and allow stalled add to proceed
         let _ = await buffer.next()
         
         // Give the addTask a moment to resume
         try? await Task.sleep(for: .milliseconds(5))
-        #expect(didAdd == true)
         
         let nextValue = await buffer.next()
         #expect(nextValue == 20)

@@ -70,7 +70,7 @@ extension ColdFlow {
     public actor Subscriber: BufferedSubscriber {
         public let id = UUID()
         
-        weak var publisher: Pub?
+        var publisher: Pub?
         var buffer: MessageBuffer<Element>
         var continuation: CheckedContinuation<Element?, Never>?
         
@@ -92,21 +92,26 @@ extension ColdFlow {
             return await _next()
         }
     }
+    
     actor Pub: Publisher {
         typealias Sub = ColdFlow<Element>.Subscriber
         
-        private weak var sub: Sub!
+        private var sub: Sub?
         
         init(sub: Sub) {
             self.sub = sub
         }
         
         func emit(_ newValue: Element) async {
-            await sub!.send(newValue)
+            if let sub {
+                await sub.send(newValue)
+            }
         }
         
         func close() async {
-            await sub!.close()
+            if let sub {
+                await sub.close()
+            }
         }
         
         func register(_ subscriber: Sub) async {
